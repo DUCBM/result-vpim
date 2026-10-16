@@ -2,30 +2,6 @@ import { Runner } from '../types';
 
 export const DEMO_RUNNERS: Runner[] = [
   {
-    bib: '90110',
-    name: 'Phùng Hữu Thanh',
-    gender: 'M',
-    distance: '42K',
-    distanceDisplay: '42K',
-    overallRank: 292,
-    genderRank: 238,
-    ag: 'M40-49',
-    ageGroupRank: 100,
-    gunTime: '6:25:47',
-    chipTime: '6:25:24',
-    date: '13/09/2026',
-    photoUrl: '/1.jpg',
-    startTime: '03:00:00',
-    cp1: '01:26:40',
-    cp1Pace: '8:40 /km',
-    cp2: '03:06:15',
-    cp2Pace: '8:58 /km',
-    cp3: '04:32:50',
-    cp3Pace: '9:44 /km',
-    avgPace: '9:08 /km',
-    finishPace: '9:13 /km',
-  },
-  {
     bib: '61137',
     name: 'Yuki Yokota',
     gender: 'M',
@@ -76,30 +52,24 @@ export const DEMO_RUNNERS: Runner[] = [
 ];
 
 export const DEMO_PHOTOS: Record<string, string> = {
-  '90110': '/1.jpg',
   '61137': '/2.jpg',
   '52535': '/3.jpg',
 };
 
 // Ảnh thi đấu ví dụ cố định cho từng VĐV mẫu (không trộn lẫn)
 export const DEMO_RACE_PHOTOS: Record<string, string[]> = {
-  '90110': ['/1.jpg'],
   '61137': ['/2.jpg'],
   '52535': ['/3.jpg'],
 };
 
 /**
  * Trả về ảnh mẫu chính xác theo BIB hoặc Họ tên VĐV
- * Phùng Hữu Thanh (90110) -> /1.jpg
  * Yuki Yokota (61137)     -> /2.jpg
  * Ilyina Iryna (52535)    -> /3.jpg
  */
 export function getDemoPhoto(bibOrName?: string | null): string | null {
   if (!bibOrName) return null;
   const s = String(bibOrName).trim().toLowerCase();
-  if (s === '90110' || s.includes('phùng hữu thanh') || s.includes('phung huu thanh')) {
-    return '/1.jpg';
-  }
   if (s === '61137' || s.includes('yuki') || s.includes('yokota')) {
     return '/2.jpg';
   }
@@ -110,3 +80,4 @@ export function getDemoPhoto(bibOrName?: string | null): string | null {
 }
 
 export const INITIAL_RUNNERS: Runner[] = DEMO_RUNNERS;
+

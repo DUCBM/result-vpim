@@ -252,7 +252,7 @@ export const DevDataBenchmarkBox: React.FC<DevDataBenchmarkBoxProps> = ({
 
   // 3. REFRESH PHOTOS SCRIPT (Ảnh thi đấu VĐV theo BIB - Bypass Cache)
   const handleRefreshPhotos = async (): Promise<number> => {
-    const bibToTest = selectedRunner?.bib || '90110';
+    const bibToTest = selectedRunner?.bib || '61137';
     setPhotosMetric({ name: 'Ảnh thi đấu (Photos Script)', status: 'loading', durationSec: null, detail: `Đang tìm BIB ${bibToTest}...` });
     const startTime = performance.now();
 
@@ -322,7 +322,7 @@ export const DevDataBenchmarkBox: React.FC<DevDataBenchmarkBoxProps> = ({
 
       const ok = await logCheckingDownload({
         timestamp: testTimestamp,
-        bib: `BENCH_${selectedRunner?.bib || '90110'}`,
+        bib: `BENCH_${selectedRunner?.bib || '61137'}`,
         race: `${activeRace.name} (BenchTest)`,
         time: '15s (DevTest)',
         scriptUrl: targetScriptUrl,
@@ -551,7 +551,7 @@ export const DevDataBenchmarkBox: React.FC<DevDataBenchmarkBoxProps> = ({
                     <span className="truncate">3/ Ảnh thi đấu (Photos)</span>
                   </div>
                   <div className="text-[10px] text-stone-400 truncate pl-5">
-                    {photosMetric.detail || `Tra cứu BIB: ${selectedRunner?.bib || '90110'}`}
+                    {photosMetric.detail || `Tra cứu BIB: ${selectedRunner?.bib || '61137'}`}
                   </div>
                 </div>
 

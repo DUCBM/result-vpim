@@ -135,7 +135,6 @@ export async function getRunnerRacePhotos(
   if (!cleanBib) return [];
 
   // 0. Nếu là VĐV mẫu (ví dụ không phải data thực tế):
-  // Phùng Hữu Thanh (90110) -> ['/1.jpg']
   // Yuki Yokota (61137)     -> ['/2.jpg']
   // Ilyina Iryna (52535)    -> ['/3.jpg']
   const demoPhoto = getDemoPhoto(cleanBib);

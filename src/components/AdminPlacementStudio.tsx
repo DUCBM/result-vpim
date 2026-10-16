@@ -120,17 +120,17 @@ export const AdminPlacementStudio: React.FC<AdminPlacementStudioProps> = ({
   const [activeFieldId, setActiveFieldId] = useState<string>('name');
   const [showGuide, setShowGuide] = useState<boolean>(true);
   const [selectedRunner, setSelectedRunner] = useState<Runner>((runners && runners.length > 0 && runners[0]) || {
-    bib: '90110',
-    name: 'PHÙNG HỮU THANH',
+    bib: '61137',
+    name: 'YUKI YOKOTA',
     gender: 'M',
-    distance: '42K',
-    distanceDisplay: '42K Full Marathon',
-    overallRank: '26',
-    genderRank: '22',
-    ag: '30-39',
-    ageGroupRank: '8',
-    gunTime: '03:15:20',
-    chipTime: '03:14:48',
+    distance: '10K',
+    distanceDisplay: '10K',
+    overallRank: '80',
+    genderRank: '67',
+    ag: 'M01-30',
+    ageGroupRank: '35',
+    gunTime: '59:13',
+    chipTime: '58:48',
     date: '13/09/2026',
   });
 
