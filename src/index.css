@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+:root {
+  font-family: 'Plus Jakarta Sans', 'Montserrat', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', 'Montserrat', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* High-impact sports / marathon typography for numbers, chip times, BIBs and ranks */
+.font-neue-plak,
+.font-stat-value {
+  font-family: 'Montserrat', 'Plus Jakarta Sans', 'Oswald', system-ui, sans-serif !important;
+  font-feature-settings: 'tnum' on, 'lnum' on;
+}
+
+.font-heading {
+  font-family: 'Plus Jakarta Sans', 'Montserrat', system-ui, sans-serif !important;
+}
+
+.font-oswald {
+  font-family: 'Oswald', 'Montserrat', sans-serif !important;
+}
+
+
