@@ -356,103 +356,120 @@ async function startServer() {
     }
   });
 
-  // Supabase Configuration for Admin Authentication
-  const DEFAULT_SUPABASE_AUTHEN_URL = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://bwywgifhugulsehkgdjq.supabase.co').replace(/\/+$/, '');
-  const DEFAULT_SUPABASE_AUTHEN_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_iH29WLGKQYUhaCMq4Rbqdw_uWtkNg3Q';
+  // Supabase Configuration for Admin Authentication (strictly Supabase Auth)
+  const DEFAULT_SUPABASE_AUTHEN_URL = (
+    process.env.SUPABASE_AUTH_URL ||
+    process.env.VITE_SUPABASE_AUTH_URL ||
+    'https://rtbpanskoryvhmzryurj.supabase.co'
+  ).replace(/\/+$/, '');
+  const DEFAULT_SUPABASE_AUTHEN_KEY =
+    process.env.SUPABASE_AUTH_ANON_KEY ||
+    process.env.VITE_SUPABASE_AUTH_ANON_KEY ||
+    'sb_publishable__ohRnuXVhKsMoUcgPkE28w_5J-NAAJy';
 
-  let cachedAdminPassword: { value: string; fetchedAt: number; url: string } | null = null;
-  const ADMIN_PASS_CACHE_TTL = 10 * 1000; // 10s cache
-
-  async function getAdminPasswordFromSupabase(
+  async function verifySupabaseAuthToken(
+    accessToken: string | undefined,
     customUrl?: string,
-    customKey?: string,
-    customTable?: string,
-    customRowName?: string
-  ): Promise<string | null> {
-    const targetUrl = (customUrl || DEFAULT_SUPABASE_AUTHEN_URL).replace(/\/+$/, '');
-    const targetKey = customKey || DEFAULT_SUPABASE_AUTHEN_KEY;
-    const targetTable = (customTable || 'authen').trim();
-    const targetRowName = (customRowName || 'Admin Certificate').trim().toLowerCase();
-
-    const now = Date.now();
-    if (
-      cachedAdminPassword &&
-      cachedAdminPassword.url === targetUrl &&
-      now - cachedAdminPassword.fetchedAt < ADMIN_PASS_CACHE_TTL
-    ) {
-      return cachedAdminPassword.value;
+    customKey?: string
+  ): Promise<{ valid: boolean; user?: any; error?: string }> {
+    const token = (accessToken || '').trim();
+    if (!token) {
+      return { valid: false, error: 'Chưa đăng nhập Supabase Authentication. Vui lòng đăng nhập lại!' };
     }
 
+    const targetUrl = (customUrl || DEFAULT_SUPABASE_AUTHEN_URL).replace(/\/+$/, '');
+    const targetKey = customKey || DEFAULT_SUPABASE_AUTHEN_KEY;
+
     try {
-      const resp = await fetch(`${targetUrl}/rest/v1/${targetTable}?select=*`, {
+      const resp = await fetch(`${targetUrl}/auth/v1/user`, {
         headers: {
           apikey: targetKey,
-          Authorization: `Bearer ${targetKey}`,
+          Authorization: `Bearer ${token}`,
         },
       });
 
-      if (resp.ok) {
-        const rows = await resp.json();
-        if (Array.isArray(rows)) {
-          const target = rows.find((r: any) => {
-            const n = (r.name ?? r.Name ?? '').toString().trim().toLowerCase();
-            return n === targetRowName;
-          });
-          if (target) {
-            const val = String(target.value ?? target.Value ?? '').trim();
-            cachedAdminPassword = { value: val, fetchedAt: now, url: targetUrl };
-            return val;
-          }
-        }
+      if (!resp.ok) {
+        return {
+          valid: false,
+          error: 'Phiên đăng nhập Supabase Authentication không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại!',
+        };
       }
-    } catch (err: any) {
-      console.warn('[Supabase Auth] Lỗi tải mật khẩu admin từ Supabase:', err.message);
-    }
-    return cachedAdminPassword && cachedAdminPassword.url === targetUrl ? cachedAdminPassword.value : null;
-  }
 
-  async function verifyAdminPassword(
-    inputPassword: string | undefined,
-    customUrl?: string,
-    customKey?: string,
-    customTable?: string,
-    customRowName?: string
-  ): Promise<{ valid: boolean; error?: string }> {
-    if (!inputPassword) return { valid: false, error: 'Vui lòng nhập mật khẩu.' };
-    const trimmed = inputPassword.trim();
-    if (!trimmed) return { valid: false, error: 'Vui lòng nhập mật khẩu.' };
+      const user = await resp.json();
+      if (user && user.id) {
+        return { valid: true, user };
+      }
 
-    // 1. Lấy mật khẩu duy nhất từ bảng authen trên Supabase
-    const remotePassword = await getAdminPasswordFromSupabase(customUrl, customKey, customTable, customRowName);
-    if (!remotePassword) {
       return {
         valid: false,
-        error: 'Chưa lấy được mật khẩu từ Supabase (bảng authen đang trả về rỗng). Nguyên nhân: URL/Key chưa đúng hoặc RLS (Row Level Security) đang chặn key anon đọc dữ liệu.',
+        error: 'Không xác thực được tài khoản từ Supabase Authentication.',
+      };
+    } catch (err: any) {
+      console.warn('[Supabase Auth] Lỗi xác thực token:', err.message);
+      return {
+        valid: false,
+        error: 'Lỗi kết nối tới Supabase Authentication để kiểm tra phiên đăng nhập.',
       };
     }
-
-    if (trimmed === remotePassword) {
-      return { valid: true };
-    }
-
-    return { valid: false, error: 'Mật khẩu không đúng. Vui lòng kiểm tra lại!' };
   }
 
-  // Admin API: Verify admin password
+  async function verifyAdminRequest(req: express.Request): Promise<{ valid: boolean; user?: any; error?: string }> {
+    const authHeader = String(req.headers.authorization || '').trim();
+    const bearerToken = authHeader.toLowerCase().startsWith('bearer ')
+      ? authHeader.slice(7).trim()
+      : '';
+    const token = bearerToken || (req.body && typeof req.body.accessToken === 'string' ? req.body.accessToken.trim() : '');
+    return verifySupabaseAuthToken(token);
+  }
+
+  // Admin API: Verify email & password directly against Supabase Authentication
   app.post('/api/admin/verify-password', async (req, res) => {
     try {
-      const { password, supabaseUrl, supabaseAnonKey, supabaseTable, supabaseRowName } = req.body;
-      const result = await verifyAdminPassword(
-        password,
-        supabaseUrl,
-        supabaseAnonKey,
-        supabaseTable,
-        supabaseRowName
-      );
-      if (result.valid) {
-        return res.json({ success: true, message: 'Xác thực thành công từ Supabase!' });
+      const { email, password, supabaseUrl, supabaseAnonKey } = req.body || {};
+
+      // Allow checking Bearer token directly if provided
+      const authHeader = String(req.headers.authorization || '').trim();
+      if (authHeader.toLowerCase().startsWith('bearer ')) {
+        const tokenCheck = await verifySupabaseAuthToken(authHeader.slice(7).trim(), supabaseUrl, supabaseAnonKey);
+        if (tokenCheck.valid) {
+          return res.json({ success: true, user: tokenCheck.user, message: 'Xác thực thành công từ Supabase Authentication!' });
+        }
+        return res.status(401).json({ success: false, error: tokenCheck.error });
       }
-      return res.status(401).json({ success: false, error: result.error || 'Mật khẩu không chính xác.' });
+
+      if (!email || !password) {
+        return res.status(400).json({ success: false, error: 'Vui lòng nhập đầy đủ Email và Mật khẩu Supabase Authentication.' });
+      }
+
+      const targetUrl = (supabaseUrl || DEFAULT_SUPABASE_AUTHEN_URL).replace(/\/+$/, '');
+      const targetKey = supabaseAnonKey || DEFAULT_SUPABASE_AUTHEN_KEY;
+
+      const resp = await fetch(`${targetUrl}/auth/v1/token?grant_type=password`, {
+        method: 'POST',
+        headers: {
+          apikey: targetKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: String(email).trim(),
+          password: String(password).trim(),
+        }),
+      });
+
+      const data = await resp.json();
+      if (resp.ok && data?.access_token && data?.user) {
+        return res.json({
+          success: true,
+          user: data.user,
+          accessToken: data.access_token,
+          message: 'Xác thực thành công từ Supabase Authentication!',
+        });
+      }
+
+      return res.status(401).json({
+        success: false,
+        error: data?.error_description || data?.msg || 'Email hoặc mật khẩu không chính xác trên Supabase Authentication.',
+      });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message });
     }
@@ -461,10 +478,10 @@ async function startServer() {
   // Admin API: Import static race JSON directly
   app.post('/api/admin/import-static-race', async (req, res) => {
     try {
-      const { password, raceData } = req.body;
-      const check = await verifyAdminPassword(password);
+      const { raceData } = req.body;
+      const check = await verifyAdminRequest(req);
       if (!check.valid) {
-        return res.status(401).json({ error: check.error || 'Mật khẩu quản trị không chính xác.' });
+        return res.status(401).json({ error: check.error || 'Chưa xác thực Supabase Authentication.' });
       }
 
       const normalized = normalizeRaceObject(raceData);
@@ -499,11 +516,11 @@ async function startServer() {
   // Admin API: Create or update a race
   app.post('/api/admin/races', async (req, res) => {
     try {
-      const { password, race, backgroundDataUrl } = req.body;
+      const { race, backgroundDataUrl } = req.body;
 
-      const check = await verifyAdminPassword(password);
+      const check = await verifyAdminRequest(req);
       if (!check.valid) {
-        return res.status(401).json({ error: check.error || 'Mật khẩu quản trị không chính xác.' });
+        return res.status(401).json({ error: check.error || 'Chưa xác thực Supabase Authentication.' });
       }
 
       if (!race || !race.name || !race.slug) {
@@ -626,10 +643,9 @@ async function startServer() {
   // Admin API: Delete a race
   app.delete('/api/admin/races/:id', async (req, res) => {
     try {
-      const password = req.headers['x-admin-password'] || req.query.password;
-      const check = await verifyAdminPassword(password as string);
+      const check = await verifyAdminRequest(req);
       if (!check.valid) {
-        return res.status(401).json({ error: check.error || 'Mật khẩu quản trị không chính xác.' });
+        return res.status(401).json({ error: check.error || 'Chưa xác thực Supabase Authentication.' });
       }
 
       const raceId = req.params.id;
@@ -671,11 +687,11 @@ async function startServer() {
   // Admin API: Save placements directly into hardcoded code (src/data/certificatePlacements.ts) and public JSON
   app.post('/api/admin/save-placements', async (req, res) => {
     try {
-      const { password, placements } = req.body;
+      const { placements } = req.body;
 
-      const check = await verifyAdminPassword(password);
+      const check = await verifyAdminRequest(req);
       if (!check.valid) {
-        return res.status(401).json({ error: check.error || 'Mật khẩu quản trị không chính xác.' });
+        return res.status(401).json({ error: check.error || 'Chưa xác thực Supabase Authentication.' });
       }
 
       if (!placements || typeof placements !== 'object') {

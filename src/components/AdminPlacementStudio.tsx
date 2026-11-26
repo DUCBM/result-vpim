@@ -41,9 +41,10 @@ import {
 } from 'lucide-react';
 import { DevDataBenchmarkBox } from './DevDataBenchmarkBox';
 import {
-  fetchAdminPasswordFromSupabase,
   adminSignInWithSupabase,
   adminGetSession,
+  getAdminAccessToken,
+  getSupabaseAuthUrl,
   adminSignOutWithSupabase,
   adminUpdatePasswordWithSupabase,
 } from '../services/supabaseService';
@@ -80,13 +81,13 @@ export const AdminPlacementStudio: React.FC<AdminPlacementStudioProps> = ({
   // Navigation tabs: 'races' (Quản lý & tạo giải) | 'placements' (Chỉnh vị trí & kích thước chữ) | 'benchmark' (Test benchmark tốc độ)
   const [adminTab, setAdminTab] = useState<'races' | 'placements' | 'benchmark'>('races');
 
-  // Authentication State
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return sessionStorage.getItem(SESSION_AUTH_KEY) === 'true';
-  });
+  // Authentication State (strictly verified via Supabase Authentication)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isCheckingSession, setIsCheckingSession] = useState<boolean>(true);
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [emailInput, setEmailInput] = useState<string>(() => {
-    return localStorage.getItem('vm_admin_saved_email') || 'admin@vnexpress.vn';
+    const saved = localStorage.getItem('vm_admin_saved_email') || '';
+    return saved === 'admin@vnexpress.vn' ? '' : saved;
   });
   const [passwordInput, setPasswordInput] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -102,13 +103,27 @@ export const AdminPlacementStudio: React.FC<AdminPlacementStudioProps> = ({
 
   // Check Supabase Auth active session on mount
   useEffect(() => {
-    adminGetSession().then(({ session, user }) => {
-      if (session && user) {
-        setIsAuthenticated(true);
-        setCurrentUser(user);
-        sessionStorage.setItem(SESSION_AUTH_KEY, 'true');
-      }
-    });
+    let mounted = true;
+    adminGetSession()
+      .then(({ session, user }) => {
+        if (!mounted) return;
+        if (session && user) {
+          setIsAuthenticated(true);
+          setCurrentUser(user);
+          sessionStorage.setItem(SESSION_AUTH_KEY, 'true');
+        } else {
+          setIsAuthenticated(false);
+          setCurrentUser(null);
+          sessionStorage.removeItem(SESSION_AUTH_KEY);
+          sessionStorage.removeItem('vm_admin_password');
+        }
+      })
+      .finally(() => {
+        if (mounted) setIsCheckingSession(false);
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // Placements & Editor State
@@ -181,7 +196,7 @@ export const AdminPlacementStudio: React.FC<AdminPlacementStudioProps> = ({
         setIsAuthenticated(true);
         setCurrentUser(res.user);
         sessionStorage.setItem(SESSION_AUTH_KEY, 'true');
-        sessionStorage.setItem('vm_admin_password', pass);
+        sessionStorage.removeItem('vm_admin_password');
         try {
           localStorage.setItem('vm_admin_saved_email', email);
         } catch {}
@@ -190,7 +205,7 @@ export const AdminPlacementStudio: React.FC<AdminPlacementStudioProps> = ({
         return;
       }
 
-      setAuthError(res.error || 'Email hoặc mật khẩu không chính xác trên Supabase Auth!');
+      setAuthError(res.error || 'Email hoặc mật khẩu không chính xác trên Supabase Authentication!');
     } catch (err: any) {
       setAuthError(err.message || 'Lỗi kiểm tra đăng nhập. Vui lòng thử lại!');
     } finally {
@@ -330,6 +345,11 @@ export const AdminPlacementStudio: React.FC<AdminPlacementStudioProps> = ({
     setSaveErrorMsg(null);
 
     try {
+      const token = await getAdminAccessToken();
+      if (!token) {
+        throw new Error('Phiên đăng nhập Supabase Authentication đã hết hạn. Vui lòng đăng nhập lại!');
+      }
+
       const updatedRace: Race = {
         ...activeRace,
         placements,
@@ -337,9 +357,11 @@ export const AdminPlacementStudio: React.FC<AdminPlacementStudioProps> = ({
 
       const res = await fetch('/api/admin/races', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
-          password: sessionStorage.getItem('vm_admin_password') || '',
           race: updatedRace,
         }),
       });
@@ -412,6 +434,18 @@ export const AdminPlacementStudio: React.FC<AdminPlacementStudioProps> = ({
     setAdminTab('placements');
   };
 
+  // SESSION CHECK SCREEN
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 text-slate-300 text-xs">
+        <div className="flex items-center gap-2.5 bg-slate-900 border border-slate-800 px-4 py-3 rounded-2xl">
+          <div className="w-4 h-4 border-2 border-emerald-500/30 border-t-emerald-400 rounded-full animate-spin" />
+          <span>Đang kiểm tra phiên Supabase Authentication...</span>
+        </div>
+      </div>
+    );
+  }
+
   // PASSWORD LOCK SCREEN
   if (!isAuthenticated) {
     return (
@@ -423,7 +457,10 @@ export const AdminPlacementStudio: React.FC<AdminPlacementStudioProps> = ({
             </div>
             <h1 className="text-xl font-bold text-white mb-1">Quản Trị Hệ Thống Giải Chạy</h1>
             <p className="text-slate-400 text-xs">
-              Xác thực bảo mật
+              Đăng nhập qua Supabase Authentication
+            </p>
+            <p className="text-[11px] font-mono text-emerald-400/80 mt-1 break-all">
+              {getSupabaseAuthUrl()}
             </p>
           </div>
 
@@ -440,7 +477,7 @@ export const AdminPlacementStudio: React.FC<AdminPlacementStudioProps> = ({
                   type="email"
                   value={emailInput}
                   onChange={(e) => setEmailInput(e.target.value)}
-                  placeholder="admin@vnexpress.vn"
+                  placeholder="Nhập email user trong Supabase Authentication..."
                   autoFocus
                   autoComplete="username"
                   className="w-full pl-9 pr-3 py-2.5 bg-slate-800 border border-slate-700 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 rounded-xl text-sm text-white placeholder-slate-500 transition-all outline-none"

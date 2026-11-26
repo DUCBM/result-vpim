@@ -472,71 +472,7 @@ export async function fetchRunnersFromSupabase(
   }
 }
 
-/**
- * Cấu hình Supabase xác thực mật khẩu Admin
- */
-export const SUPABASE_AUTHEN_CONFIG = {
-  url: 'https://bwywgifhugulsehkgdjq.supabase.co',
-  anonKey: 'sb_publishable_iH29WLGKQYUhaCMq4Rbqdw_uWtkNg3Q',
-  table: 'authen',
-  rowName: 'Admin Certificate',
-};
-
-/**
- * Lấy mật khẩu admin từ Supabase:
- * Tìm dòng tại cột `name` bằng đúng chuỗi 'Admin Certificate'
- * Lấy giá trị ở cột `value` của dòng đó làm mật khẩu admin
- */
-export async function fetchAdminPasswordFromSupabase(
-  customUrl?: string,
-  customKey?: string,
-  customTable?: string,
-  customRowName?: string
-): Promise<{ password: string | null; error?: string }> {
-  try {
-    const globalSb = getGlobalSupabaseConfig();
-    const envUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-    const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
-
-    const url = (customUrl || globalSb.url || envUrl || SUPABASE_AUTHEN_CONFIG.url).trim().replace(/\/+$/, '');
-    const key = (customKey || globalSb.anonKey || envKey || SUPABASE_AUTHEN_CONFIG.anonKey).trim();
-    const table = (customTable || SUPABASE_AUTHEN_CONFIG.table).trim();
-    const rowName = (customRowName || SUPABASE_AUTHEN_CONFIG.rowName).trim().toLowerCase();
-
-    const client = getSupabaseClient(url, key);
-    if (!client) {
-      return { password: null, error: 'Không thể khởi tạo Supabase Client' };
-    }
-
-    const { data, error } = await client
-      .from(table)
-      .select('*');
-
-    if (error) {
-      console.warn(`[Supabase Auth] Lỗi đọc bảng ${table}:`, error.message);
-      return { password: null, error: error.message };
-    }
-
-    if (!data || data.length === 0) {
-      return { password: null, error: `Bảng ${table} chưa có dữ liệu` };
-    }
-
-    const matchedRow = data.find((row: any) => {
-      const nameVal = (row.name ?? row.Name ?? '').toString().trim();
-      return nameVal.toLowerCase() === rowName;
-    });
-
-    if (!matchedRow) {
-      return { password: null, error: `Không tìm thấy dòng '${customRowName || SUPABASE_AUTHEN_CONFIG.rowName}' trong bảng ${table}` };
-    }
-
-    const value = (matchedRow.value ?? matchedRow.Value ?? '').toString().trim();
-    return { password: value, error: undefined };
-  } catch (err: any) {
-    console.error('[Supabase Auth] Exception:', err);
-    return { password: null, error: err.message || 'Lỗi kết nối Supabase' };
-  }
-}
+// Admin authentication strictly uses Supabase Auth (supabase.auth.signInWithPassword / getSession)
 
 /**
  * Tìm kiếm đích danh 1 hoặc vài VĐV theo BIB hoặc Họ tên từ Supabase
@@ -610,14 +546,22 @@ export async function searchSingleRunnerFromSupabase(
   }
 }
 
+export const SUPABASE_AUTH_PROJECT = {
+  url: 'https://rtbpanskoryvhmzryurj.supabase.co',
+  anonKey: 'sb_publishable__ohRnuXVhKsMoUcgPkE28w_5J-NAAJy',
+};
+
 let globalAuthClient: SupabaseClient | null = null;
 
+export function getSupabaseAuthUrl(): string {
+  const envUrl = (import.meta as any).env?.VITE_SUPABASE_AUTH_URL || '';
+  return cleanSupabaseUrl(envUrl || SUPABASE_AUTH_PROJECT.url);
+}
+
 export function getSupabaseAuthClient(): SupabaseClient | null {
-  const globalSb = getGlobalSupabaseConfig();
-  const envUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-  const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
-  const url = cleanSupabaseUrl(globalSb.url || envUrl || DEFAULT_SUPABASE_CONFIG.url);
-  const key = (globalSb.anonKey || envKey || DEFAULT_SUPABASE_CONFIG.anonKey || '').trim();
+  const envKey = (import.meta as any).env?.VITE_SUPABASE_AUTH_ANON_KEY || '';
+  const url = getSupabaseAuthUrl();
+  const key = (envKey || SUPABASE_AUTH_PROJECT.anonKey || '').trim();
   if (!url || !key) return null;
   try {
     if (!globalAuthClient) {
@@ -636,7 +580,7 @@ export function getSupabaseAuthClient(): SupabaseClient | null {
 }
 
 /**
- * Đăng nhập Admin qua Supabase Auth (hỗ trợ fallback qua bảng authen)
+ * Đăng nhập Admin trực tiếp qua Supabase Authentication (Email & Password)
  */
 export async function adminSignInWithSupabase(
   email: string,
@@ -644,54 +588,47 @@ export async function adminSignInWithSupabase(
 ): Promise<{ success: boolean; user?: any; session?: any; error?: string }> {
   try {
     const client = getSupabaseAuthClient();
-    if (client) {
-      const { data, error } = await client.auth.signInWithPassword({
-        email: email.trim(),
-        password: pass.trim(),
-      });
-      if (!error && data?.user) {
-        return { success: true, user: data.user, session: data.session };
+    if (!client) {
+      return { success: false, error: 'Chưa cấu hình được kết nối Supabase Authentication.' };
+    }
+
+    const { data, error } = await client.auth.signInWithPassword({
+      email: email.trim(),
+      password: pass,
+    });
+
+    if (error) {
+      const msg = (error.message || '').toLowerCase();
+      if (msg.includes('invalid login credentials')) {
+        return { success: false, error: 'Email hoặc mật khẩu không chính xác trên Supabase Authentication!' };
       }
+      if (msg.includes('email not confirmed')) {
+        return { success: false, error: 'Tài khoản email chưa được xác nhận (confirm) trong Supabase Authentication!' };
+      }
+      return { success: false, error: error.message || 'Đăng nhập Supabase Authentication thất bại!' };
     }
 
-    // Fallback: Kiểm tra với mật khẩu trong bảng authen nếu Supabase Auth chưa kích hoạt hoặc người dùng đăng nhập bằng mật khẩu hệ thống
-    const { password: remotePassword } = await fetchAdminPasswordFromSupabase();
-    if (remotePassword && remotePassword.trim() === pass.trim()) {
-      return {
-        success: true,
-        user: {
-          id: 'admin_local',
-          email: email.trim() || 'admin@vnexpress.vn',
-          user_metadata: { role: 'admin' },
-        },
-      };
+    if (data?.user && data?.session) {
+      return { success: true, user: data.user, session: data.session };
     }
 
-    return { success: false, error: 'Email hoặc mật khẩu không chính xác trên Supabase Auth!' };
+    return { success: false, error: 'Không nhận được phiên đăng nhập từ Supabase Authentication!' };
   } catch (err: any) {
-    return { success: false, error: err.message || 'Lỗi đăng nhập' };
+    return { success: false, error: err.message || 'Lỗi đăng nhập Supabase Authentication' };
   }
 }
 
 /**
- * Lấy phiên đăng nhập hiện tại của Admin
+ * Lấy phiên đăng nhập hiện tại của Admin từ Supabase Authentication
  */
 export async function adminGetSession(): Promise<{ session: any; user: any }> {
   try {
     const client = getSupabaseAuthClient();
     if (client) {
-      const { data } = await client.auth.getSession();
-      if (data?.session?.user) {
+      const { data, error } = await client.auth.getSession();
+      if (!error && data?.session?.user) {
         return { session: data.session, user: data.session.user };
       }
-    }
-    // Fallback nếu đã lưu trạng thái trong sessionStorage
-    if (typeof window !== 'undefined' && sessionStorage.getItem('vm_admin_auth_token') === 'true') {
-      const savedEmail = localStorage.getItem('vm_admin_saved_email') || 'admin@vnexpress.vn';
-      return {
-        session: { access_token: 'local_admin_session' },
-        user: { email: savedEmail, id: 'admin_local' },
-      };
     }
     return { session: null, user: null };
   } catch {
@@ -700,7 +637,21 @@ export async function adminGetSession(): Promise<{ session: any; user: any }> {
 }
 
 /**
- * Đăng xuất Admin
+ * Lấy Access Token (JWT) hiện tại từ Supabase Authentication để gửi kèm API backend
+ */
+export async function getAdminAccessToken(): Promise<string | null> {
+  try {
+    const client = getSupabaseAuthClient();
+    if (!client) return null;
+    const { data } = await client.auth.getSession();
+    return data?.session?.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Đăng xuất Admin khỏi Supabase Authentication
  */
 export async function adminSignOutWithSupabase(): Promise<{ success: boolean; error?: string }> {
   try {

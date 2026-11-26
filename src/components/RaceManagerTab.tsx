@@ -8,6 +8,7 @@ import { GOOGLE_APPS_SCRIPT_PHOTOS_CODE } from '../services/racePhotoService';
 import { GOOGLE_APPS_SCRIPT_CHECKING_CODE } from '../services/logService';
 import {
   getGlobalSupabaseConfig,
+  getAdminAccessToken,
   testSupabaseConnection,
   SupabaseTestResult,
 } from '../services/supabaseService';
@@ -246,20 +247,25 @@ export const RaceManagerTab: React.FC<RaceManagerTabProps> = ({
 
       // Thử lưu trực tiếp vào backend API và ghi file public/races/${slug}.json
       try {
-        const resp = await fetch('/api/admin/import-static-race', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            password: sessionStorage.getItem('vm_admin_password') || '',
-            raceData: { ...raceInfo, placements: importedPlacements },
-          }),
-        });
-        if (resp.ok) {
-          const resData = await resp.json();
-          await onRefreshRaces();
-          setFolderScanMsg(`✅ ${resData.message || `Đã nạp thành công giải "${raceInfo.name}"!`}`);
-          setTimeout(() => setFolderScanMsg(null), 6000);
-          return;
+        const token = await getAdminAccessToken();
+        if (token) {
+          const resp = await fetch('/api/admin/import-static-race', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              raceData: { ...raceInfo, placements: importedPlacements },
+            }),
+          });
+          if (resp.ok) {
+            const resData = await resp.json();
+            await onRefreshRaces();
+            setFolderScanMsg(`✅ ${resData.message || `Đã nạp thành công giải "${raceInfo.name}"!`}`);
+            setTimeout(() => setFolderScanMsg(null), 6000);
+            return;
+          }
         }
       } catch {}
 
@@ -559,11 +565,18 @@ export const RaceManagerTab: React.FC<RaceManagerTabProps> = ({
         placements: editingRace?.placements || currentPlacements,
       };
 
+      const token = await getAdminAccessToken();
+      if (!token) {
+        throw new Error('Phiên đăng nhập Supabase Authentication đã hết hạn. Vui lòng đăng nhập lại!');
+      }
+
       const resp = await fetch('/api/admin/races', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
-          password: sessionStorage.getItem('vm_admin_password') || '',
           race: racePayload,
           backgroundDataUrl: formBgDataUrl,
         }),
@@ -590,12 +603,18 @@ export const RaceManagerTab: React.FC<RaceManagerTabProps> = ({
     if (!confirmed) return;
 
     try {
+      const token = await getAdminAccessToken();
+      if (!token) {
+        alert('Phiên đăng nhập Supabase Authentication đã hết hạn. Vui lòng đăng nhập lại!');
+        return;
+      }
+
       try {
         localStorage.removeItem('vm_all_races_cache_v2');
       } catch {}
       const resp = await fetch(`/api/admin/races/${race.id}`, {
         method: 'DELETE',
-        headers: { 'x-admin-password': sessionStorage.getItem('vm_admin_password') || '' },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (resp.ok) {
         await onRefreshRaces();
